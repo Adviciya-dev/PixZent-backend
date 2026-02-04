@@ -55,26 +55,46 @@ jobs:
 
       - name: SAM Deploy
         env:
-          DEPLOY_MONGO_URL: ${{ env.MONGO_URL }}
-          DEPLOY_JWT_SECRET: ${{ secrets.JWT_SECRET_KEY }}
-          DEPLOY_ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
-          DEPLOY_DB_NAME: ${{ secrets.DB_NAME || 'pixzent' }}
-          DEPLOY_ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL || 'dmb@pixzent.com' }}
+          PARAM_STAGE: ${{ github.event.inputs.stage || 'prod' }}
+          PARAM_MONGO_URL: ${{ env.MONGO_URL }}
+          PARAM_DB_NAME: ${{ secrets.DB_NAME || 'pixzent' }}
+          PARAM_JWT_SECRET: ${{ secrets.JWT_SECRET_KEY }}
+          PARAM_ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL || 'dmb@pixzent.com' }}
+          PARAM_ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: |
-          STAGE=${{ github.event.inputs.stage || 'prod' }}
-          sam deploy \
-            --stack-name pixzent-backend-${STAGE} \
-            --region ${{ env.AWS_REGION }} \
-            --capabilities CAPABILITY_IAM \
-            --no-confirm-changeset \
-            --no-fail-on-empty-changeset \
-            --parameter-overrides \
-              "Stage=${STAGE}" \
-              "MongoURL=${DEPLOY_MONGO_URL}" \
-              "DBName=${DEPLOY_DB_NAME}" \
-              "JWTSecretKey=${DEPLOY_JWT_SECRET}" \
-              "AdminEmail=${DEPLOY_ADMIN_EMAIL}" \
-              "AdminPassword=${DEPLOY_ADMIN_PASSWORD}"
+          python3 << 'EOF'
+          import json
+          import os
+          import subprocess
+
+          params = [
+              {"ParameterKey": "Stage", "ParameterValue": os.environ.get("PARAM_STAGE", "prod")},
+              {"ParameterKey": "MongoURL", "ParameterValue": os.environ.get("PARAM_MONGO_URL", "")},
+              {"ParameterKey": "DBName", "ParameterValue": os.environ.get("PARAM_DB_NAME", "pixzent")},
+              {"ParameterKey": "JWTSecretKey", "ParameterValue": os.environ.get("PARAM_JWT_SECRET", "")},
+              {"ParameterKey": "AdminEmail", "ParameterValue": os.environ.get("PARAM_ADMIN_EMAIL", "dmb@pixzent.com")},
+              {"ParameterKey": "AdminPassword", "ParameterValue": os.environ.get("PARAM_ADMIN_PASSWORD", "")}
+          ]
+
+          with open("params.json", "w") as f:
+              json.dump(params, f)
+
+          stage = os.environ.get("PARAM_STAGE", "prod")
+          region = "${{ env.AWS_REGION }}"
+
+          cmd = [
+              "sam", "deploy",
+              "--stack-name", f"pixzent-backend-{stage}",
+              "--region", region,
+              "--capabilities", "CAPABILITY_IAM",
+              "--no-confirm-changeset",
+              "--no-fail-on-empty-changeset",
+              "--parameter-overrides", "file://params.json"
+          ]
+
+          result = subprocess.run(cmd)
+          exit(result.returncode)
+          EOF
 
       - name: Get API URL
         run: |
