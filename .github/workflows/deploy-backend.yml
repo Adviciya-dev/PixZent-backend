@@ -1,0 +1,82 @@
+name: Deploy Backend to AWS Lambda
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: 'Deployment stage'
+        required: true
+        default: 'prod'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      mongo_url:
+        description: 'MongoDB URL (leave empty to use secrets)'
+        required: false
+        type: string
+
+env:
+  AWS_REGION: us-east-1
+  PYTHON_VERSION: '3.11'
+  # MongoDB URL priority: workflow input > secret > repository variable
+  MONGO_URL: ${{ github.event.inputs.mongo_url || secrets.MONGO_URL || vars.MONGO_URL }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install SAM CLI
+        run: pip install aws-sam-cli
+
+      - name: SAM Build
+        run: sam build
+
+      - name: SAM Deploy
+        run: |
+          STAGE=${{ github.event.inputs.stage || 'prod' }}
+          sam deploy \
+            --stack-name pixzent-backend-${STAGE} \
+            --region ${{ env.AWS_REGION }} \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              Stage=${STAGE} \
+              MongoURL="${{ env.MONGO_URL }}" \
+              DBName="${{ secrets.DB_NAME || 'pixzent' }}" \
+              JWTSecretKey="${{ secrets.JWT_SECRET_KEY }}" \
+              AdminEmail="${{ secrets.ADMIN_EMAIL || 'admin@pixzent.com' }}" \
+              AdminPassword="${{ secrets.ADMIN_PASSWORD }}"
+
+      - name: Get API URL
+        run: |
+          STAGE=${{ github.event.inputs.stage || 'prod' }}
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name pixzent-backend-${STAGE} \
+            --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' \
+            --output text)
+          echo "API_URL=${API_URL}" >> $GITHUB_OUTPUT
+          echo "### Deployment Successful! :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "**API URL:** ${API_URL}" >> $GITHUB_STEP_SUMMARY

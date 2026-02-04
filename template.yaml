@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: PixZent FastAPI Backend - AWS Lambda Deployment
+
+Parameters:
+  Stage:
+    Type: String
+    Default: prod
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Deployment stage
+
+  MongoURL:
+    Type: String
+    Description: MongoDB connection URL (use AWS Secrets Manager ARN or direct URL)
+    NoEcho: true
+
+  DBName:
+    Type: String
+    Default: pixzent
+    Description: MongoDB database name
+
+  JWTSecretKey:
+    Type: String
+    Description: JWT secret key for authentication
+    NoEcho: true
+
+  AdminEmail:
+    Type: String
+    Default: dmb@pixzent.com
+    Description: Default admin email
+
+  AdminPassword:
+    Type: String
+    Description: Default admin password
+    NoEcho: true
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.11
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        MONGO_URL: !Ref MongoURL
+        DB_NAME: !Ref DBName
+        JWT_SECRET_KEY: !Ref JWTSecretKey
+        ADMIN_EMAIL: !Ref AdminEmail
+        ADMIN_PASSWORD: !Ref AdminPassword
+
+Resources:
+  PixZentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub pixzent-api-${Stage}
+      CodeUri: .
+      Handler: server.handler
+      Description: PixZent FastAPI Backend
+      Events:
+        ApiGatewayRoot:
+          Type: HttpApi
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+            ApiId: !Ref PixZentHttpApi
+        ApiGatewayRootPath:
+          Type: HttpApi
+          Properties:
+            Path: /
+            Method: ANY
+            ApiId: !Ref PixZentHttpApi
+      VpcConfig:
+        # Uncomment if your MongoDB is in a VPC
+        # SecurityGroupIds:
+        #   - !Ref LambdaSecurityGroup
+        # SubnetIds:
+        #   - !Ref PrivateSubnet1
+        #   - !Ref PrivateSubnet2
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        # Add more policies as needed (e.g., for S3, Secrets Manager)
+        # - Version: '2012-10-17'
+        #   Statement:
+        #     - Effect: Allow
+        #       Action:
+        #         - secretsmanager:GetSecretValue
+        #       Resource: '*'
+
+  PixZentHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Stage
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowHeaders:
+          - "*"
+        AllowMethods:
+          - "*"
+        AllowCredentials: false
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${PixZentHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
+
+  FunctionArn:
+    Description: Lambda Function ARN
+    Value: !GetAtt PixZentFunction.Arn
+
+  FunctionName:
+    Description: Lambda Function Name
+    Value: !Ref PixZentFunction

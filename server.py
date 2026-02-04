@@ -3,6 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from contextlib import asynccontextmanager
 import os
 import logging
 from pathlib import Path
@@ -13,13 +14,50 @@ from datetime import datetime, timezone, timedelta
 import jwt
 from passlib.context import CryptContext
 
+# For AWS Lambda
+try:
+    from mangum import Mangum
+    IS_LAMBDA = True
+except ImportError:
+    IS_LAMBDA = False
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+# MongoDB connection (lazy initialization for Lambda)
+mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
+db_name = os.environ.get('DB_NAME', 'pixzent')
+
+# Global database connection
+_client = None
+_db = None
+
+def get_db():
+    """Get database connection with lazy initialization"""
+    global _client, _db
+    if _client is None:
+        _client = AsyncIOMotorClient(mongo_url)
+        _db = _client[db_name]
+    return _db
+
+# For backward compatibility
+db = property(lambda self: get_db())
+
+class DBProxy:
+    """Proxy class to lazily access database"""
+    @property
+    def audit_submissions(self):
+        return get_db().audit_submissions
+
+    @property
+    def admin_users(self):
+        return get_db().admin_users
+
+    @property
+    def status_checks(self):
+        return get_db().status_checks
+
+db = DBProxy()
 
 # JWT Configuration
 SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'pixzent-super-secret-key-2026-change-in-production')
@@ -32,8 +70,29 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # Security
 security = HTTPBearer()
 
-# Create the main app without a prefix
-app = FastAPI(title="PixZent API", version="1.0.0")
+# Configure logging early
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Lifespan context manager for startup/shutdown
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup/shutdown events"""
+    # Startup
+    await create_default_admin()
+    logger.info("PixZent API started")
+    yield
+    # Shutdown
+    global _client
+    if _client:
+        _client.close()
+        logger.info("MongoDB connection closed")
+
+# Create the main app with lifespan
+app = FastAPI(title="PixZent API", version="1.0.0", lifespan=lifespan)
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
@@ -413,37 +472,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# ============ HELPER - Create default admin user ============
 
-# ============ STARTUP EVENT - Create default admin user ============
-
-@app.on_event("startup")
-async def startup_event():
+async def create_default_admin():
     """Create default admin user if not exists"""
-    default_email = "dmb@pixzent.com"
-    default_password = "uaepixzent@#2026@$"
-    
-    # Check if admin user exists
-    existing_user = await db.admin_users.find_one({"email": default_email})
-    
-    if not existing_user:
-        admin_user = {
-            "id": str(uuid.uuid4()),
-            "email": default_email,
-            "password_hash": get_password_hash(default_password),
-            "name": "PixZent Admin",
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        await db.admin_users.insert_one(admin_user)
-        logger.info(f"Default admin user created: {default_email}")
-    else:
-        logger.info(f"Admin user already exists: {default_email}")
+    default_email = os.environ.get('ADMIN_EMAIL', 'dmb@pixzent.com')
+    default_password = os.environ.get('ADMIN_PASSWORD', 'uaepixzent@#2026@$')
 
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
+    try:
+        # Check if admin user exists
+        existing_user = await db.admin_users.find_one({"email": default_email})
+
+        if not existing_user:
+            admin_user = {
+                "id": str(uuid.uuid4()),
+                "email": default_email,
+                "password_hash": get_password_hash(default_password),
+                "name": "PixZent Admin",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.admin_users.insert_one(admin_user)
+            logger.info(f"Default admin user created: {default_email}")
+        else:
+            logger.info(f"Admin user already exists: {default_email}")
+    except Exception as e:
+        logger.error(f"Error creating default admin: {e}")
+
+# ============ AWS LAMBDA HANDLER ============
+
+# Create Mangum handler for AWS Lambda
+if IS_LAMBDA:
+    handler = Mangum(app, lifespan="auto")
+else:
+    handler = None
+
+# For local development with uvicorn
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
