@@ -24,6 +24,7 @@ Parameters:
 
   JWTSecretKey:
     Type: String
+    Default: pixzent2026supersecretkeyforjwttokens
     Description: JWT secret key for authentication
     NoEcho: true
 
@@ -34,6 +35,7 @@ Parameters:
 
   AdminPassword:
     Type: String
+    Default: PixZentAdmin2026Secure
     Description: Default admin password
     NoEcho: true
 

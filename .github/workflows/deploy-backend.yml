@@ -58,9 +58,6 @@ jobs:
           PARAM_STAGE: ${{ github.event.inputs.stage || 'prod' }}
           PARAM_MONGO_URL: ${{ env.MONGO_URL }}
           PARAM_DB_NAME: ${{ secrets.DB_NAME || 'pixzent' }}
-          PARAM_JWT_SECRET: ${{ secrets.JWT_SECRET_KEY }}
-          PARAM_ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL || 'dmb@pixzent.com' }}
-          PARAM_ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: |
           python3 << 'EOF'
           import os
@@ -79,10 +76,7 @@ jobs:
               "--parameter-overrides",
               f"Stage={stage}",
               f"MongoURL={os.environ.get('PARAM_MONGO_URL', '')}",
-              f"DBName={os.environ.get('PARAM_DB_NAME', 'pixzent')}",
-              f"JWTSecretKey={os.environ.get('PARAM_JWT_SECRET', '')}",
-              f"AdminEmail={os.environ.get('PARAM_ADMIN_EMAIL', 'dmb@pixzent.com')}",
-              f"AdminPassword={os.environ.get('PARAM_ADMIN_PASSWORD', '')}"
+              f"DBName={os.environ.get('PARAM_DB_NAME', 'pixzent')}"
           ]
 
           result = subprocess.run(cmd)
