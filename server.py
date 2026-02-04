@@ -81,8 +81,12 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup/shutdown events"""
-    # Startup
-    await create_default_admin()
+    # Startup - don't block on admin creation
+    logger.info("PixZent API starting...")
+    try:
+        await create_default_admin()
+    except Exception as e:
+        logger.error(f"Failed to create default admin during startup: {e}")
     logger.info("PixZent API started")
     yield
     # Shutdown
@@ -511,7 +515,7 @@ async def create_default_admin():
 
 # Create Mangum handler for AWS Lambda
 if IS_LAMBDA:
-    handler = Mangum(app, lifespan="auto")
+    handler = Mangum(app, lifespan="off")
 else:
     handler = None
 
