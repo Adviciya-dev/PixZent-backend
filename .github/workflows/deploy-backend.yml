@@ -63,24 +63,11 @@ jobs:
           PARAM_ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: |
           python3 << 'EOF'
-          import json
           import os
           import subprocess
 
-          params = [
-              {"ParameterKey": "Stage", "ParameterValue": os.environ.get("PARAM_STAGE", "prod")},
-              {"ParameterKey": "MongoURL", "ParameterValue": os.environ.get("PARAM_MONGO_URL", "")},
-              {"ParameterKey": "DBName", "ParameterValue": os.environ.get("PARAM_DB_NAME", "pixzent")},
-              {"ParameterKey": "JWTSecretKey", "ParameterValue": os.environ.get("PARAM_JWT_SECRET", "")},
-              {"ParameterKey": "AdminEmail", "ParameterValue": os.environ.get("PARAM_ADMIN_EMAIL", "dmb@pixzent.com")},
-              {"ParameterKey": "AdminPassword", "ParameterValue": os.environ.get("PARAM_ADMIN_PASSWORD", "")}
-          ]
-
-          with open("params.json", "w") as f:
-              json.dump(params, f)
-
           stage = os.environ.get("PARAM_STAGE", "prod")
-          region = "${{ env.AWS_REGION }}"
+          region = "us-east-1"
 
           cmd = [
               "sam", "deploy",
@@ -89,7 +76,13 @@ jobs:
               "--capabilities", "CAPABILITY_IAM",
               "--no-confirm-changeset",
               "--no-fail-on-empty-changeset",
-              "--parameter-overrides", "file://params.json"
+              "--parameter-overrides",
+              f"Stage={stage}",
+              f"MongoURL={os.environ.get('PARAM_MONGO_URL', '')}",
+              f"DBName={os.environ.get('PARAM_DB_NAME', 'pixzent')}",
+              f"JWTSecretKey={os.environ.get('PARAM_JWT_SECRET', '')}",
+              f"AdminEmail={os.environ.get('PARAM_ADMIN_EMAIL', 'dmb@pixzent.com')}",
+              f"AdminPassword={os.environ.get('PARAM_ADMIN_PASSWORD', '')}"
           ]
 
           result = subprocess.run(cmd)
