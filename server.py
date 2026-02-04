@@ -249,6 +249,15 @@ def get_client_ip(request: Request) -> str:
 
 # ============ PUBLIC ROUTES ============
 
+# Root route on main app for testing (no /api prefix)
+@app.get("/")
+async def app_root():
+    return {"message": "PixZent Lambda is running", "version": "1.0.0"}
+
+@app.get("/health")
+async def app_health():
+    return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
+
 @api_router.get("/")
 async def root():
     return {"message": "PixZent API is running", "version": "1.0.0"}
