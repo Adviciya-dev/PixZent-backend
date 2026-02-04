@@ -253,17 +253,6 @@ def get_client_ip(request: Request) -> str:
 
 # ============ PUBLIC ROUTES ============
 
-# Debug catch-all route to see what path is being received
-@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
-async def catch_all(request: Request, path: str):
-    return {
-        "debug": True,
-        "path": path,
-        "url": str(request.url),
-        "method": request.method,
-        "headers": dict(request.headers)
-    }
-
 # Root route on main app for testing (no /api prefix)
 @app.get("/")
 async def app_root():
@@ -525,8 +514,9 @@ async def create_default_admin():
 # ============ AWS LAMBDA HANDLER ============
 
 # Create Mangum handler for AWS Lambda
+# api_gateway_base_path strips the stage prefix from the path
 if IS_LAMBDA:
-    handler = Mangum(app, lifespan="off")
+    handler = Mangum(app, lifespan="off", api_gateway_base_path="/prod")
 else:
     handler = None
 
