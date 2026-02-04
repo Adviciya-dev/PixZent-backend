@@ -54,6 +54,12 @@ jobs:
         run: sam build
 
       - name: SAM Deploy
+        env:
+          DEPLOY_MONGO_URL: ${{ env.MONGO_URL }}
+          DEPLOY_JWT_SECRET: ${{ secrets.JWT_SECRET_KEY }}
+          DEPLOY_ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          DEPLOY_DB_NAME: ${{ secrets.DB_NAME || 'pixzent' }}
+          DEPLOY_ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL || 'dmb@pixzent.com' }}
         run: |
           STAGE=${{ github.event.inputs.stage || 'prod' }}
           sam deploy \
@@ -63,12 +69,12 @@ jobs:
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
             --parameter-overrides \
-              Stage=${STAGE} \
-              MongoURL="${{ env.MONGO_URL }}" \
-              DBName="${{ secrets.DB_NAME || 'pixzent' }}" \
-              JWTSecretKey="${{ secrets.JWT_SECRET_KEY }}" \
-              AdminEmail="${{ secrets.ADMIN_EMAIL || 'admin@pixzent.com' }}" \
-              AdminPassword="${{ secrets.ADMIN_PASSWORD }}"
+              "Stage=${STAGE}" \
+              "MongoURL=${DEPLOY_MONGO_URL}" \
+              "DBName=${DEPLOY_DB_NAME}" \
+              "JWTSecretKey=${DEPLOY_JWT_SECRET}" \
+              "AdminEmail=${DEPLOY_ADMIN_EMAIL}" \
+              "AdminPassword=${DEPLOY_ADMIN_PASSWORD}"
 
       - name: Get API URL
         run: |
